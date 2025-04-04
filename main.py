@@ -29,7 +29,7 @@ class Node:
                 self.neighbors = [all_nodes[name] for name in neighbor_names if name in all_nodes]  # Convert names to objects
                 print(f"Neighbors for {self.name} loaded from file.")
                 return
-        except FileNotFoundError:
+        except (FileNotFoundError,EOFError):
             print(f"No saved neighbors for {self.name}, needs to be calculated")
         # Find local neighbors
         distances = []
@@ -112,6 +112,11 @@ class Line:
             opacity=1
         ).add_to(self.map_instance.m)
 
+class Route:
+    def __init__(self,start,end,name):
+        self.start = start
+        self.end = end
+        self.name = name
 
     
 # def Dijkstra(self,start,end):
@@ -130,21 +135,28 @@ class Line:
     #     q.pop(q.index(u)) # Remove from list
     #     for neighbor in self.neigh
 
-def buildRoad(start,end,map):
-    # end.lat 
-    # end.long
-    # take node which shortest abs distance to end
-    # call that node using buildRoad
-    # recursive
+def buildRoad(start,end,map,visited=None):
+    if visited == None:
+        visited = set()
+    if start in visited:
+        # Infinite recursion
+        print("Infinite recurision at:",start.name)
+        return
+    
+    visited.add(start)
+    # TODO: Fix Max recursion reached problem
     if end == start:  # Avoid infinite recursion
         print("Arrived")
         return
     distances = []
     print("We are at:", start.name)
     for node in start.neighbors:
-        dist = geodesic((node.lat, node.long), (end.lat, end.long)).km
-        distances.append((dist, node))
-  
+        if node not in visited:  # Only consider unvisited nodes
+            dist = geodesic((node.lat, node.long), (end.lat, end.long)).km
+            distances.append((dist, node))
+    if not distances:  # No valid neighbors left
+        print("No more unvisited neighbors, stopping pathfinding.")
+        return
     closest_node = heapq.nsmallest(1, distances, key=lambda x: x[0])[0][1] # Takes the node part of the returning tuple [(dist,node)]
     
     # Print line
@@ -153,15 +165,14 @@ def buildRoad(start,end,map):
     buildRoad(closest_node,end,map)
 
 def create_lines(all_nodes):
-    start = time.time()
+   
 
     for name,node in all_nodes.items():
         node.find_neighbor(all_nodes)
         for neighbor in node.neighbors:
             line = Line(node,neighbor,node.map_instance,color="red")
             line.draw_line()   
-    end = time.time()
-    print("Runtime:",end - start)
+    
 
 
 
@@ -205,12 +216,12 @@ def main():
     # Create and add a node
     nodes = gen_nodes(map1)
 
-    # node1 = find_city("Malmö",nodes)
-    # node2 = find_city("Stockholm",nodes)
+    node1 = find_city("Osmaniye",nodes)
+    node2 = find_city("Baku",nodes)
 
     create_lines(nodes)
     
-    # buildRoad(node1,node2,map1)
+    buildRoad(node1,node2,map1)
     # node1 = Node(45.3288, -121.6625, "Mt. Hood", 100000, map1)
     # node2 = Node(45.5, -122.0, "Small City", 50000, map1)
     end = time.time()

@@ -16,9 +16,32 @@ class Node:
         self.population = population
         self.map_instance = map_instance  # Corrected attribute
         self.neighbors = []
-       
-                    
-    def find_neighbor(self, all_nodes,num_neighbors=4):
+        self.neighbors_distances = {}
+
+    def check_if_same_dir(src,node,nodes):
+        pass
+        # ex:
+        # Osmanyie 36,25
+        # Torpankelle 36,37
+        # Erzin 36,36
+        # Kuzunchuli 36,36
+        # Yesilköy 36,36
+        """
+        om 2 är neråt välj 2 uppåt?
+        om 2 är till vänster välj två till höger
+        """
+        up_down,left_right = get_direction()
+        if up_down == "south":
+            south += 1
+        elif up_down == "north":
+            north += 1
+        if left_right == "west":
+            west += 1
+        elif left_right == "east":
+            east += 1
+
+
+    def find_neighbor(self, all_nodes,num_neighbors=7):
         file_path = f"./neighbors/{self.country}/"
         file_name = f"neighbor_of_{self.name}"
         full_path = file_path + file_name
@@ -27,6 +50,8 @@ class Node:
             with open(full_path, 'rb') as file:
                 neighbor_names = pickle.load(file)  # Load names of neighbors
                 self.neighbors = [all_nodes[name] for name in neighbor_names if name in all_nodes]  # Convert names to objects
+                for node in self.neighbors:
+                    self.neighbors_distances = geodesic((self.lat, self.long), (node.lat, node.long)).km
                 print(f"Neighbors for {self.name} loaded from file.")
                 return
         except (FileNotFoundError,EOFError):
@@ -35,17 +60,36 @@ class Node:
         distances = []
         
         #twice = []
+        direction_buckets = {
+            "north": [],
+            "south": [],
+            "east": [],
+            "west": []
+        }
         for name, node in all_nodes.items():
             if name == self.name:
                 continue  # Skip itself
+            # Compute direction
+            hor, ver = get_direction(self,node)
+            
             # Compute geodesic distance
             dist = geodesic((self.lat, self.long), (node.lat, node.long)).km
-            distances.append((dist, node))
+            direction_buckets[hor].append((dist, node))
+            direction_buckets[ver].append((dist, node))
 
-        closest_nodes = heapq.nsmallest(num_neighbors, distances, key=lambda x: x[0])
+        # pick 2 closest nodes from 
+        closest_nodes = []
+        for keys,_ in direction_buckets.items():   
+        
+            closest_nodes.append(heapq.nsmallest(int(num_neighbors/2), direction_buckets[keys], key=lambda x: x[0]))
 
+        closest_nodes = [lst for lst in closest_nodes if lst]
+
+        # print(closest_nodes)
         # Extract only the node objects (ignoring the distance value)
-        self.neighbors = [node for _, node in closest_nodes]
+        self.neighbors = [node[-1] for node in closest_nodes]
+        self.neighbors = [node for _, node in self.neighbors]
+
         # Save neightbors
         neighbor_names = [node.name for node in self.neighbors]  # Store only names
 
@@ -90,7 +134,7 @@ class Map:
         df = df.drop(columns=["city_ascii", "iso2", "iso3", "admin_name", "capital", "id"])
         # Drop cities with too little population
         # df = df[df["population"] > 50000]
-        df = df[df["country"].isin(["Norway","Finland","Sweden","Turkey","Armenia","Azerbaijan","Georgia"])]
+        df = df[df["country"].isin(["Turkey","Armenia","Azerbaijan"])]
         # Sort by country
         df = df.sort_values('country')
         # df = df.sample(frac=0.05, random_state=1)  # frac=0.5 to sample 50%
@@ -118,31 +162,51 @@ class Route:
         self.end = end
         self.name = name
 
-    
-# def Dijkstra(self,start,end):
-    # distances = {}
-    # prev = {}
-    # q = []
-    # for node in (self.nodes):
-    #     if node == self.start:
-    #         distances[node] = 0
-    #     distances[node] = np.inf
-    #     prev[node] = np.nan
-    #     q.append(node)
-    # while q:
-    #     # Get min distance
-    #     u = min(distances,key = distances.get()) # Get node with shortest distance
-    #     q.pop(q.index(u)) # Remove from list
-    #     for neighbor in self.neigh
+def get_direction(src,dest):
+        up_down = None
+        left_right = None
+        if src.lat < dest.lat: # neighbor is east
+            left_right = "east"
+        else: # then must be west
+            left_right = "west"
+
+        if src.long < dest.long:
+            up_down = "north"
+        else:
+            up_down = "south"
+        return left_right,up_down 
+
+
+def djikstras(graph,node):
+    """
+    for each vertex v in Graph.Vertices:
+ 4          dist[v] ← INFINITY
+ 5          prev[v] ← UNDEFINED
+ 6          add v to Q
+ 7      dist[source] ← 0
+ 8     
+ 9      while Q is not empty:
+10          u ← vertex in Q with minimum dist[u]
+11          remove u from Q
+12         
+13          for each neighbor v of u still in Q:
+14              alt ← dist[u] + Graph.Edges(u, v)
+15              if alt < dist[v]:
+16                  dist[v] ← alt
+17                  prev[v] ← u
+18
+19      return dist[], prev[
+    """
+    pass
+        
 
 def buildRoad(start,end,map,visited=None):
     if visited == None:
         visited = set()
     if start in visited:
-        # Infinite recursion
         print("Infinite recurision at:",start.name)
         return
-    
+    print(visited)
     visited.add(start)
     # TODO: Fix Max recursion reached problem
     if end == start:  # Avoid infinite recursion
@@ -153,20 +217,20 @@ def buildRoad(start,end,map,visited=None):
     for node in start.neighbors:
         if node not in visited:  # Only consider unvisited nodes
             dist = geodesic((node.lat, node.long), (end.lat, end.long)).km
+            print("name:",node.name,"dist:",dist)
             distances.append((dist, node))
     if not distances:  # No valid neighbors left
         print("No more unvisited neighbors, stopping pathfinding.")
         return
-    closest_node = heapq.nsmallest(1, distances, key=lambda x: x[0])[0][1] # Takes the node part of the returning tuple [(dist,node)]
+    closest_node = min(distances, key=lambda x: x[0])[1]  # Min finds the closest valid node
     
     # Print line
     line = Line(start,closest_node,map,color="green")
     line.draw_line()
-    buildRoad(closest_node,end,map)
+    buildRoad(closest_node,end,map,visited)
 
 def create_lines(all_nodes):
    
-
     for name,node in all_nodes.items():
         node.find_neighbor(all_nodes)
         for neighbor in node.neighbors:
